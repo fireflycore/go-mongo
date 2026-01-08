@@ -10,20 +10,30 @@ import (
 )
 
 const (
-	ColorReset    = "\033[0m"    // ColorReset 重置 ANSI 颜色。
-	ColorYellow   = "\033[33m"   // ColorYellow 黄色（耗时/提示）。
-	ColorBlueBold = "\033[34;1m" // ColorBlueBold 蓝色加粗（字段高亮）。
-	ColorRedBold  = "\033[31;1m" // ColorRedBold 红色加粗（错误高亮）。
+	// ColorReset 重置 ANSI 颜色。
+	ColorReset = "\033[0m"
+	// ColorYellow 黄色（耗时/提示）。
+	ColorYellow = "\033[33m"
+	// ColorBlueBold 蓝色加粗（字段高亮）。
+	ColorBlueBold = "\033[34;1m"
+	// ColorRedBold 红色加粗（错误高亮）。
+	ColorRedBold = "\033[31;1m"
 
-	LogTypeMongo  = 6         // LogTypeMongo 为日志类型标识（供下游聚合检索）。
-	ResultSuccess = "success" // ResultSuccess 为成功执行的结果标记。
+	// LogTypeMongo 为日志类型标识（供下游聚合检索）。
+	LogTypeMongo = 6
+	// ResultSuccess 为成功执行的结果标记。
+	ResultSuccess = "success"
 
-	TraceId = "trace-id" // TraceId 为从 metadata 读取 trace id 的 key。
-	UserId  = "user-id"  // UserId 为从 metadata 读取 user id 的 key。
-	AppId   = "app-id"   // AppId 为从 metadata 读取 app id 的 key。
+	// TraceId 为从 metadata 读取 trace id 的 key。
+	TraceId = "trace-id"
+	// UserId 为从 metadata 读取 user id 的 key。
+	UserId = "user-id"
+	// AppId 为从 metadata 读取 app id 的 key。
+	AppId = "app-id"
 )
 
-type LogLevel int // LogLevel 定义日志级别枚举。
+// LogLevel 定义日志级别枚举。
+type LogLevel int
 
 const (
 	Silent LogLevel = iota + 1 // Silent 表示不记录任何日志。
@@ -32,16 +42,24 @@ const (
 	Info                       // Info 表示记录所有日志。
 )
 
-type Conf struct { // Conf 为 logger 的配置。
-	Console       bool          // Console 控制是否输出到控制台。
-	SlowThreshold time.Duration // SlowThreshold 为慢查询阈值。
-	Colorful      bool          // Colorful 控制是否启用彩色输出。
-	Database      string        // Database 为库名字段，用于检索与聚合。
-	LogLevel      LogLevel      // LogLevel 为日志级别。
+// Conf 为 logger 的配置。
+type Conf struct {
+	// Console 控制是否输出到控制台。
+	Console bool
+	// SlowThreshold 为慢查询阈值。
+	SlowThreshold time.Duration
+	// Colorful 控制是否启用彩色输出。
+	Colorful bool
+	// Database 为库名字段，用于检索与聚合。
+	Database string
+	// LogLevel 为日志级别。
+	LogLevel LogLevel
 }
 
-type Interface interface { // Interface 约束 logger 需要提供的能力。
-	Trace(ctx context.Context, id int64, elapsed time.Duration, smt string, err string) // Trace 记录一次命令的执行信息。
+// Interface 约束 logger 需要提供的能力。
+type Interface interface {
+	// Trace 记录一次命令的执行信息。
+	Trace(ctx context.Context, id int64, elapsed time.Duration, smt string, err string)
 }
 
 type logger struct {
@@ -53,7 +71,7 @@ type logger struct {
 }
 
 // NewLogger 构造一个新的 logger，并按配置决定输出模板。
-func NewLogger(conf Conf, handle func([]byte)) Interface {
+func NewLogger(conf *Conf, handle func([]byte)) Interface {
 	// baseFormat 为默认输出模板。
 	baseFormat := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms]%s\n%s"
 	// traceStr 默认使用 baseFormat。
@@ -76,7 +94,7 @@ func NewLogger(conf Conf, handle func([]byte)) Interface {
 	}
 
 	return &logger{
-		Conf:         conf,
+		Conf:         *conf,
 		traceStr:     traceStr,
 		traceWarnStr: traceWarnStr,
 		traceErrStr:  traceErrStr,
