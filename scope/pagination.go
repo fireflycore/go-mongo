@@ -1,4 +1,4 @@
-package mongo
+package scope
 
 import (
 	"go.mongodb.org/mongo-driver/mongo/options"
