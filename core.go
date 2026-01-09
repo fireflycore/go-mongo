@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -16,7 +17,7 @@ import (
 // New 根据配置创建 MongoDB 连接并返回数据库句柄。
 func New(c *Conf) (*mongo.Database, error) {
 	if c == nil {
-		return nil, fmt.Errorf("mongo: nil conf")
+		return nil, errors.New("mongo: conf is nil")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
