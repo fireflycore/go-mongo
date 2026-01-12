@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fireflycore/go-mongo/internal"
+	"github.com/fireflycore/go-utils/tlsx"
 	"go.mongodb.org/mongo-driver/event"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -36,7 +37,7 @@ func New(c *Conf) (*mongo.Database, error) {
 	}
 
 	// 从配置生成 TLSConfig；tlsEnabled 表示是否启用 TLS。
-	tlsConfig, tlsEnabled, err := NewTLSConfig(c.Tls)
+	tlsConfig, tlsEnabled, err := tlsx.NewTLSConfig(c.Tls)
 	// TLS 配置构造失败时直接返回错误。
 	if err != nil {
 		return nil, err
