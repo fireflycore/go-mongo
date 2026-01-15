@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/fireflycore/go-mongo/internal"
+	"github.com/fireflycore/go-utils/network"
 	"github.com/fireflycore/go-utils/tlsx"
 	"go.mongodb.org/mongo-driver/event"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -19,6 +21,11 @@ import (
 func New(c *Conf) (*mongo.Database, error) {
 	if c == nil {
 		return nil, errors.New("mongo: conf is nil")
+	}
+
+	host, port, err := network.SplitHostPort(c.Address, "27017")
+	if err != nil {
+		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -46,10 +53,11 @@ func New(c *Conf) (*mongo.Database, error) {
 	if tlsEnabled {
 		// 由 driver 使用该 TLS 配置建立安全连接。
 		clientOptions.TLSConfig = tlsConfig
+		clientOptions.TLSConfig.ServerName = host
 	}
 
 	// 将 address 组装为 MongoDB 标准 URI。
-	uri := fmt.Sprintf("mongodb://%s", c.Address)
+	uri := fmt.Sprintf("mongodb://%s", net.JoinHostPort(host, port))
 	// 把 URI 应用到 clientOptions。
 	clientOptions.ApplyURI(uri)
 
