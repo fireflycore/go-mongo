@@ -39,10 +39,10 @@ const (
 type LogLevel int
 
 const (
-	Silent LogLevel = iota + 1 // Silent 表示不记录任何日志。
-	Error                      // Error 表示仅记录错误日志。
-	Warn                       // Warn 表示记录慢查询与错误日志。
-	Info                       // Info 表示记录所有日志。
+	Silent LogLevel = 0 // Silent 静默级别。
+	Info   LogLevel = 1 // Info 普通级别。
+	Warn   LogLevel = 2 // Warn 警告级别。
+	Error  LogLevel = 3 // Error 错误级别。
 )
 
 // Conf 为 logger 的配置。
@@ -107,27 +107,27 @@ func NewLogger(conf *Conf, handle func([]byte)) Interface {
 
 func (l *logger) Trace(ctx context.Context, id int64, elapsed time.Duration, smt string, err string) {
 	// Silent 模式不输出任何日志。
-	if l.LogLevel <= Silent {
+	if l.LogLevel == Silent {
 		return
 	}
 
 	date := time.Now().Format(time.DateTime)
 
 	switch { // 按错误/慢查询/普通信息分支记录日志。
-	case len(err) > 0 && l.LogLevel >= Error: // 错误分支：err 非空且级别允许输出。
+	case len(err) > 0 && l.LogLevel <= Error: // 错误分支：err 非空且级别允许输出。
 		if l.Console {
 			fmt.Printf(l.traceErrStr+"\n", date, "error", l.Database, id, float64(elapsed.Nanoseconds())/1e6, err, smt)
 		}
 		l.handleLog(ctx, Error, smt, err, elapsed)
 
-	case elapsed > l.SlowThreshold && l.SlowThreshold != 0 && l.LogLevel >= Warn: // 慢查询分支：耗时超过阈值且级别允许输出。
+	case elapsed > l.SlowThreshold && l.SlowThreshold != 0 && l.LogLevel <= Warn: // 慢查询分支：耗时超过阈值且级别允许输出。
 		slowLog := fmt.Sprintf("SLOW SQL >= %v", l.SlowThreshold)
 		if l.Console {
 			fmt.Printf(l.traceWarnStr+"\n", date, "warn", l.Database, id, float64(elapsed.Nanoseconds())/1e6, slowLog, smt)
 		}
 		l.handleLog(ctx, Warn, smt, slowLog, elapsed)
 
-	case l.LogLevel >= Info: // 普通信息分支：级别允许输出。
+	case l.LogLevel <= Info: // 普通信息分支：级别允许输出。
 		if l.Console {
 			fmt.Printf(l.traceStr+"\n", date, "info", l.Database, id, float64(elapsed.Nanoseconds())/1e6, smt)
 		}
@@ -145,7 +145,7 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, smt, result stri
 		"Statement": smt,                    // Statement 为命令文本。
 		"Result":    result,                 // Result 为 success/slow/error 等结果标记。
 		"Duration":  elapsed.Microseconds(), // Duration 为耗时（微秒），便于统计分析。
-		"Level":     level,                  // Level 为日志级别枚举值。
+		"Level":     int(level),             // Level 为日志级别枚举值。
 		"Type":      LogTypeMongo,           // Type 为日志类型标记。
 	}
 
