@@ -4,29 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/metadata"
 )
 
+// ANSI Color Constants
 const (
-	// ColorReset 重置 ANSI 颜色。
-	ColorReset = "\033[0m"
-	// ColorYellow 黄色（耗时/提示）。
-	ColorYellow = "\033[33m"
-	// ColorBlueBold 蓝色加粗（字段高亮）。
+	ColorReset    = "\033[0m"
+	ColorYellow   = "\033[33m"
 	ColorBlueBold = "\033[34;1m"
-	// ColorRedBold 红色加粗（错误高亮）。
-	ColorRedBold = "\033[31;1m"
+	ColorRedBold  = "\033[31;1m"
+	ColorGreen    = "\033[32m"
+)
 
+// Log Constants
+const (
 	// LogTypeMongo 为日志类型标识（供下游聚合检索）。
 	LogTypeMongo = 6
 	// ResultSuccess 为成功执行的结果标记。
 	ResultSuccess = "success"
 
-	// Firefly系统自定义头部（统一前缀）
+	// HeaderPrefix Firefly系统自定义头部（统一前缀）
 	HeaderPrefix = "x-firefly-"
-
 	// TraceId 为从 metadata 读取 trace id 的 key。
 	TraceId = HeaderPrefix + "trace-id"
 	// UserId 为从 metadata 读取 user id 的 key。
@@ -39,10 +42,10 @@ const (
 type LogLevel int
 
 const (
-	Silent LogLevel = 0 // Silent 静默级别。
-	Info   LogLevel = 1 // Info 普通级别。
-	Warn   LogLevel = 2 // Warn 警告级别。
-	Error  LogLevel = 3 // Error 错误级别。
+	Info  LogLevel = 1 // Info 普通级别。
+	Warn  LogLevel = 2 // Warn 警告级别。
+	Error LogLevel = 3 // Error 错误级别。
+
 )
 
 // Conf 为 logger 的配置。
@@ -55,8 +58,6 @@ type Conf struct {
 	Colorful bool
 	// Database 为库名字段，用于检索与聚合。
 	Database string
-	// LogLevel 为日志级别。
-	LogLevel LogLevel
 }
 
 // Interface 约束 logger 需要提供的能力。
@@ -76,24 +77,23 @@ type logger struct {
 // NewLogger 构造一个新的 logger，并按配置决定输出模板。
 func NewLogger(conf *Conf, handle func([]byte)) Interface {
 	// baseFormat 为默认输出模板。
-	baseFormat := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms]%s\n%s"
-	// traceStr 默认使用 baseFormat。
-	traceStr := baseFormat
-	// traceWarnStr 默认使用 baseFormat。
-	traceWarnStr := baseFormat
-	// traceErrStr 为错误输出模板。
-	traceErrStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] %s\n%s"
+	// Info: date, level, db, id, timer, file, smt
+	traceStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] %s\n%s"
+	// Warn: date, level, db, id, timer, file, slowLog, smt
+	traceWarnStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] %s %s\n%s"
+	// Error: date, level, db, id, timer, file, err, smt
+	traceErrStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] %s %s\n%s"
 
 	// 彩色输出时替换模板为 ANSI 颜色版本。
 	if conf.Colorful {
 		// colorPrefix 为彩色前缀模板。
 		colorPrefix := "[%s] [%s] " + ColorBlueBold + "[Database:%s] " + ColorBlueBold + "[RequestId:%d] " + ColorYellow
 		// 普通日志模板。
-		traceStr = colorPrefix + "[Duration:%.3fms]\n" + ColorReset + "%s"
+		traceStr = colorPrefix + "[Duration:%.3fms] " + ColorGreen + "%s\n" + ColorReset + "%s"
 		// 慢查询模板。
-		traceWarnStr = colorPrefix + "[Duration:%.3fms] " + ColorYellow + "%s\n" + ColorReset + "%s"
+		traceWarnStr = colorPrefix + "[Duration:%.3fms] " + ColorGreen + "%s " + ColorYellow + "%s\n" + ColorReset + "%s"
 		// 错误模板。
-		traceErrStr = colorPrefix + "[Duration:%.3fms] " + ColorRedBold + "%s\n" + ColorReset + " %s"
+		traceErrStr = colorPrefix + "[Duration:%.3fms] " + ColorGreen + "%s " + ColorRedBold + "%s\n" + ColorReset + " %s"
 	}
 
 	return &logger{
@@ -106,36 +106,36 @@ func NewLogger(conf *Conf, handle func([]byte)) Interface {
 }
 
 func (l *logger) Trace(ctx context.Context, id int64, elapsed time.Duration, smt string, err string) {
-	// Silent 模式不输出任何日志。
-	if l.LogLevel == Silent {
-		return
-	}
 
 	date := time.Now().Format(time.DateTime)
+	file := fileWithLineNum()
+	timer := float64(elapsed.Nanoseconds()) / 1e6
 
-	switch { // 按错误/慢查询/普通信息分支记录日志。
-	case len(err) > 0 && l.LogLevel <= Error: // 错误分支：err 非空且级别允许输出。
+	// 按错误/慢查询/普通信息分支记录日志。
+	// 注意：此处不再使用 LogLevel 进行过滤，而是根据执行结果自动标记级别（全链路收集）。
+	switch {
+	case len(err) > 0: // 错误分支：err 非空。
 		if l.Console {
-			fmt.Printf(l.traceErrStr+"\n", date, "error", l.Database, id, float64(elapsed.Nanoseconds())/1e6, err, smt)
+			fmt.Printf(l.traceErrStr+"\n", date, "error", l.Database, id, timer, file, err, smt)
 		}
-		l.handleLog(ctx, Error, smt, err, elapsed)
+		l.handleLog(ctx, Error, file, smt, err, elapsed)
 
-	case elapsed > l.SlowThreshold && l.SlowThreshold != 0 && l.LogLevel <= Warn: // 慢查询分支：耗时超过阈值且级别允许输出。
+	case elapsed > l.SlowThreshold && l.SlowThreshold != 0: // 慢查询分支：耗时超过阈值。
 		slowLog := fmt.Sprintf("SLOW SQL >= %v", l.SlowThreshold)
 		if l.Console {
-			fmt.Printf(l.traceWarnStr+"\n", date, "warn", l.Database, id, float64(elapsed.Nanoseconds())/1e6, slowLog, smt)
+			fmt.Printf(l.traceWarnStr+"\n", date, "warn", l.Database, id, timer, file, slowLog, smt)
 		}
-		l.handleLog(ctx, Warn, smt, slowLog, elapsed)
+		l.handleLog(ctx, Warn, file, smt, slowLog, elapsed)
 
-	case l.LogLevel <= Info: // 普通信息分支：级别允许输出。
+	default: // 普通信息分支。
 		if l.Console {
-			fmt.Printf(l.traceStr+"\n", date, "info", l.Database, id, float64(elapsed.Nanoseconds())/1e6, smt)
+			fmt.Printf(l.traceStr+"\n", date, "info", l.Database, id, timer, file, smt)
 		}
-		l.handleLog(ctx, Info, smt, ResultSuccess, elapsed)
+		l.handleLog(ctx, Info, file, smt, ResultSuccess, elapsed)
 	}
 }
 
-func (l *logger) handleLog(ctx context.Context, level LogLevel, smt, result string, elapsed time.Duration) {
+func (l *logger) handleLog(ctx context.Context, level LogLevel, path, smt, result string, elapsed time.Duration) {
 	if l.handle == nil {
 		return
 	}
@@ -146,6 +146,7 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, smt, result stri
 		"Result":    result,                 // Result 为 success/slow/error 等结果标记。
 		"Duration":  elapsed.Microseconds(), // Duration 为耗时（微秒），便于统计分析。
 		"Level":     int(level),             // Level 为日志级别枚举值。
+		"Path":      path,                   // Path 为调用位置。
 		"Type":      LogTypeMongo,           // Type 为日志类型标记。
 	}
 
@@ -162,4 +163,14 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, smt, result stri
 	if b, err := json.Marshal(logMap); err == nil {
 		l.handle(b)
 	}
+}
+
+func fileWithLineNum() string {
+	for i := 2; i < 15; i++ {
+		_, file, line, ok := runtime.Caller(i)
+		if ok && (!strings.Contains(file, "go.mongodb.org/mongo-driver") || strings.HasSuffix(file, "_test.go")) && !strings.Contains(file, "go-mongo/internal/logger.go") {
+			return file + ":" + strconv.FormatInt(int64(line), 10)
+		}
+	}
+	return ""
 }
