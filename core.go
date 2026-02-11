@@ -79,7 +79,6 @@ func New(c *Conf) (*mongo.Database, error) {
 	if c.Logger {
 		logger := internal.NewLogger(&internal.Conf{ // 构造内部 logger 配置并返回 logger 实例。
 			SlowThreshold: 200 * time.Millisecond, // 慢查询阈值，超过则按 warn 输出。
-			LogLevel:      internal.Info,          // 日志级别：默认 Info。
 			Colorful:      true,                   // 是否开启彩色控制台输出。
 			Database:      c.Database,             // 写入日志字段，用于区分数据库实例。
 			Console:       c.loggerConsole,        // 是否输出到控制台。
