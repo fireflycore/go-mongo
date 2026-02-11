@@ -168,9 +168,19 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, path, smt, resul
 func fileWithLineNum() string {
 	for i := 2; i < 15; i++ {
 		_, file, line, ok := runtime.Caller(i)
-		if ok && (!strings.Contains(file, "go.mongodb.org/mongo-driver") || strings.HasSuffix(file, "_test.go")) && !strings.Contains(file, "go-mongo/internal/logger.go") {
+		if !ok {
+			continue
+		}
+		if strings.HasSuffix(file, "_test.go") {
 			return file + ":" + strconv.FormatInt(int64(line), 10)
 		}
+		if strings.Contains(file, "go.mongodb.org/mongo-driver") {
+			continue
+		}
+		if strings.Contains(file, "go-mongo/internal/logger.go") || strings.Contains(file, "go-mongo/core.go") || strings.Contains(file, "github.com/fireflycore/go-mongo") {
+			continue
+		}
+		return file + ":" + strconv.FormatInt(int64(line), 10)
 	}
 	return ""
 }
