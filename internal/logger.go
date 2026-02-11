@@ -78,22 +78,22 @@ type logger struct {
 func NewLogger(conf *Conf, handle func([]byte)) Interface {
 	// baseFormat 为默认输出模板。
 	// Info: date, level, db, id, timer, file, smt
-	traceStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] %s\n%s"
+	traceStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] [Path:%s]\n%s"
 	// Warn: date, level, db, id, timer, file, slowLog, smt
-	traceWarnStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] %s %s\n%s"
+	traceWarnStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] [Path:%s]\n%s\n%s"
 	// Error: date, level, db, id, timer, file, err, smt
-	traceErrStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] %s %s\n%s"
+	traceErrStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] [Path:%s]\n%s\n%s"
 
 	// 彩色输出时替换模板为 ANSI 颜色版本。
 	if conf.Colorful {
 		// colorPrefix 为彩色前缀模板。
-		colorPrefix := "[%s] [%s] " + ColorBlueBold + "[Database:%s] " + ColorBlueBold + "[RequestId:%d] " + ColorYellow
+		colorPrefix := "[%s] [%s] " + ColorBlueBold + "[Database:%s] " + ColorBlueBold + "[RequestId:%d] " + ColorYellow + "[Duration:%.3fms] " + ColorGreen + "[Path:%s]\n"
 		// 普通日志模板。
-		traceStr = colorPrefix + "[Duration:%.3fms] " + ColorGreen + "%s\n" + ColorReset + "%s"
+		traceStr = colorPrefix + ColorReset + "%s"
 		// 慢查询模板。
-		traceWarnStr = colorPrefix + "[Duration:%.3fms] " + ColorGreen + "%s " + ColorYellow + "%s\n" + ColorReset + "%s"
+		traceWarnStr = colorPrefix + ColorYellow + "%s\n" + ColorReset + "%s"
 		// 错误模板。
-		traceErrStr = colorPrefix + "[Duration:%.3fms] " + ColorGreen + "%s " + ColorRedBold + "%s\n" + ColorReset + " %s"
+		traceErrStr = colorPrefix + ColorRedBold + "%s\n" + ColorReset + "%s"
 	}
 
 	return &logger{
