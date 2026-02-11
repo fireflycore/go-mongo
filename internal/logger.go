@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc/metadata"
@@ -165,31 +166,53 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, path, smt, resul
 	}
 }
 
+// filterCache 用于缓存 PC 对应的过滤结果（避免重复的 FuncForPC 和字符串匹配）。
+// Key: uintptr (pc), Value: bool (true=保留/返回, false=跳过)
+var filterCache sync.Map
+
 func fileWithLineNum() string {
 	for i := 2; i < 15; i++ {
 		pc, file, line, ok := runtime.Caller(i)
 		if !ok {
 			continue
 		}
-		// 优先保留测试文件，便于定位测试代码中的调用
-		if strings.HasSuffix(file, "_test.go") {
-			return file + ":" + strconv.FormatInt(int64(line), 10)
-		}
 
-		// 过滤 mongo-driver 内部调用
-		if strings.Contains(file, "go.mongodb.org/mongo-driver") {
+		// 1. 查缓存：如果已判定过该 PC，直接使用结果
+		if val, hit := filterCache.Load(pc); hit {
+			if val.(bool) {
+				return file + ":" + strconv.FormatInt(int64(line), 10)
+			}
 			continue
 		}
 
-		// 过滤 go-mongo 库自身的代码
-		// 通过函数名过滤可以覆盖所有属于该 module 的文件，且不受本地文件路径影响
-		if fn := runtime.FuncForPC(pc); fn != nil {
-			if strings.Contains(fn.Name(), "github.com/fireflycore/go-mongo") {
-				continue
+		// 2. 慢路径：执行完整判定逻辑
+		keep := false
+
+		// 规则A: 优先保留测试文件
+		if strings.HasSuffix(file, "_test.go") {
+			keep = true
+		} else if strings.Contains(file, "go.mongodb.org/mongo-driver") {
+			// 规则B: 过滤 mongo-driver
+			keep = false
+		} else {
+			// 规则C: 过滤 go-mongo 库自身
+			if fn := runtime.FuncForPC(pc); fn != nil {
+				if strings.Contains(fn.Name(), "github.com/fireflycore/go-mongo") {
+					keep = false
+				} else {
+					keep = true // 非库内部代码，保留
+				}
+			} else {
+				keep = true // 无法获取函数名，默认保留
 			}
 		}
 
-		return file + ":" + strconv.FormatInt(int64(line), 10)
+		// 写入缓存
+		filterCache.Store(pc, keep)
+
+		if keep {
+			return file + ":" + strconv.FormatInt(int64(line), 10)
+		}
 	}
 	return ""
 }
