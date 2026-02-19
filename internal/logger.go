@@ -46,8 +46,25 @@ const (
 	Info  LogLevel = 1 // Info 普通级别。
 	Warn  LogLevel = 2 // Warn 警告级别。
 	Error LogLevel = 3 // Error 错误级别。
-
 )
+
+// OperationLogger 表示操作日志。
+type OperationLogger struct {
+	Database  string `json:"database"`
+	Statement string `json:"statement"`
+	Result    string `json:"result"`
+	Path      string `json:"path"`
+
+	Duration uint64 `json:"duration"`
+
+	Level uint32 `json:"level"`
+	Type  uint32 `json:"type"`
+
+	TraceId     string `json:"trace_id"`
+	UserId      string `json:"user_id"`
+	TargetAppId string `json:"target_app_id"`
+	InvokeAppId string `json:"invoke_app_id"`
+}
 
 // Conf 为 logger 的配置。
 type Conf struct {
@@ -141,27 +158,27 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, path, smt, resul
 		return
 	}
 
-	logMap := map[string]interface{}{
-		"Database":  l.Database,             // Database 为库名。
-		"Statement": smt,                    // Statement 为命令文本。
-		"Result":    result,                 // Result 为 success/slow/error 等结果标记。
-		"Duration":  elapsed.Microseconds(), // Duration 为耗时（微秒），便于统计分析。
-		"Level":     level,                  // Level 为日志级别枚举值。
-		"Path":      path,                   // Path 为调用位置。
-		"Type":      LogTypeMongo,           // Type 为日志类型标记。
+	log := &OperationLogger{
+		Database:  l.Database,                     // Database 为库名。
+		Statement: smt,                            // Statement 为命令文本。
+		Result:    result,                         // Result 为 success/slow/error 等结果标记。
+		Duration:  uint64(elapsed.Microseconds()), // Duration 为耗时（微秒），便于统计分析。
+		Level:     uint32(level),                  // Level 为日志级别枚举值。
+		Path:      path,                           // Path 为调用位置。
+		Type:      LogTypeMongo,                   // Type 为日志类型标记。
 	}
 
 	md, _ := metadata.FromIncomingContext(ctx)
 	if gd := md.Get(TraceId); len(gd) != 0 {
-		logMap["trace_id"] = gd[0]
+		log.TraceId = gd[0]
 	}
 	if gd := md.Get(UserId); len(gd) != 0 {
-		logMap["user_id"] = gd[0]
+		log.UserId = gd[0]
 	}
 	if gd := md.Get(AppId); len(gd) != 0 {
-		logMap["invoke_app_id"] = gd[0]
+		log.InvokeAppId = gd[0]
 	}
-	if b, err := json.Marshal(logMap); err == nil {
+	if b, err := json.Marshal(log); err == nil {
 		l.handle(b)
 	}
 }
