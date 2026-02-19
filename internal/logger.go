@@ -40,7 +40,7 @@ const (
 )
 
 // LogLevel 定义日志级别枚举。
-type LogLevel int
+type LogLevel uint32
 
 const (
 	Info  LogLevel = 1 // Info 普通级别。
@@ -146,7 +146,7 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, path, smt, resul
 		"Statement": smt,                    // Statement 为命令文本。
 		"Result":    result,                 // Result 为 success/slow/error 等结果标记。
 		"Duration":  elapsed.Microseconds(), // Duration 为耗时（微秒），便于统计分析。
-		"Level":     int(level),             // Level 为日志级别枚举值。
+		"Level":     level,                  // Level 为日志级别枚举值。
 		"Path":      path,                   // Path 为调用位置。
 		"Type":      LogTypeMongo,           // Type 为日志类型标记。
 	}
