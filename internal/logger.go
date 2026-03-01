@@ -40,6 +40,8 @@ const (
 	UserId = HeaderPrefix + "user-id"
 	// AppId 为从 metadata 读取 app id 的 key
 	AppId = HeaderPrefix + "app-id"
+	// TenantId 为从 metadata 读取调用方 tenant id 的key
+	TenantId = HeaderPrefix + "tenant-id"
 )
 
 // LogLevel 定义日志级别枚举。
@@ -66,9 +68,12 @@ type OperationLogger struct {
 	TraceId  string `json:"trace_id"`
 	ParentId string `json:"parent_id"`
 
-	UserId      string `json:"user_id"`
 	TargetAppId string `json:"target_app_id"`
 	InvokeAppId string `json:"invoke_app_id"`
+
+	UserId   string `json:"user_id"`
+	AppId    string `json:"app_id"`
+	TenantId string `json:"tenant_id"`
 }
 
 // Conf 为 logger 的配置。
@@ -184,8 +189,13 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, path, smt, resul
 		log.UserId = gd[0]
 	}
 	if gd := md.Get(AppId); len(gd) != 0 {
+		log.AppId = gd[0]
 		log.InvokeAppId = gd[0]
 	}
+	if gd := md.Get(TenantId); len(gd) != 0 {
+		log.TenantId = gd[0]
+	}
+
 	if b, err := json.Marshal(log); err == nil {
 		l.handle(b)
 	}
