@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo"
 )
 
 // New 根据配置创建 MongoDB 连接并返回数据库句柄。
@@ -32,6 +33,9 @@ func New(c *Conf) (*mongo.Database, error) {
 	defer cancel()
 
 	clientOptions := options.Client()
+
+	// 启用 otelmongo 插件（Tracing），自动记录 Mongo 命令 Span
+	clientOptions.Monitor = otelmongo.NewMonitor(otelmongo.WithCommandAttributeDisabled(false))
 
 	if c.Username != "" {
 		credential := options.Credential{
@@ -76,25 +80,48 @@ func New(c *Conf) (*mongo.Database, error) {
 	}
 
 	// 启用日志时，安装命令监控器以采集 Mongo 命令执行信息。
+	// 注意：go-mongo 原有 Logger 是通过 Monitor 实现的。
+	// 由于 clientOptions.Monitor 只能设置一个，而 otelmongo 也是一个 Monitor。
+	// 为了同时支持 Logs 和 Traces，我们需要把 otelmongo 和原有 Logger Monitor 串联起来。
+	// 但 mongo-driver 目前没有 ChainMonitor 的公开方法。
+	// 幸好 otelmongo.NewMonitor 返回的是 *event.CommandMonitor。
+	// 我们可以在原有 Monitor 的基础上，把 otelmongo 的回调函数合并进去。
+	otelMonitor := clientOptions.Monitor // 这是上面刚设置的 otelmongo monitor
+
 	if c.Logger {
 		logger := internal.NewLogger(&internal.Conf{ // 构造内部 logger 配置并返回 logger 实例。
 			SlowThreshold: 200 * time.Millisecond, // 慢查询阈值，超过则按 warn 输出。
 			Colorful:      true,                   // 是否开启彩色控制台输出。
 			Database:      c.Database,             // 写入日志字段，用于区分数据库实例。
 			Console:       c.loggerConsole,        // 是否输出到控制台。
-		}, c.loggerHandle) // loggerHandle 非空时会收到结构化 JSON 日志。
+		})
 
 		// stmts 用于缓存 RequestID 对应的命令文本，供结束事件读取。
 		var stmts sync.Map
-		// 绑定命令监控回调（开始/成功/失败）。
+
+		// 保存 otelmongo 的原始回调
+		otelStarted := otelMonitor.Started
+		otelSucceeded := otelMonitor.Succeeded
+		otelFailed := otelMonitor.Failed
+
+		// 重新绑定命令监控回调（串联 otelmongo + internal logger）。
 		clientOptions.Monitor = &event.CommandMonitor{
 			// Started 在命令开始时触发。
 			Started: func(ctx context.Context, e *event.CommandStartedEvent) {
-				// 缓存 requestId->command string，供后续成功/失败取回。
+				// 先执行 otelmongo 的逻辑 (Tracing)
+				if otelStarted != nil {
+					otelStarted(ctx, e)
+				}
+				// 再执行 internal logger 的逻辑 (Logging)
 				stmts.Store(e.RequestID, e.Command.String())
 			},
 			// Succeeded 在命令成功时触发。
 			Succeeded: func(ctx context.Context, e *event.CommandSucceededEvent) {
+				// 先执行 otelmongo 的逻辑
+				if otelSucceeded != nil {
+					otelSucceeded(ctx, e)
+				}
+				// 再执行 internal logger 的逻辑
 				// smt 用于保存命令字符串（若能从 map 中取到）。
 				var smt string
 				// 通过 RequestID 找到对应的命令文本。
@@ -109,6 +136,11 @@ func New(c *Conf) (*mongo.Database, error) {
 			},
 			// Failed 在命令失败时触发。
 			Failed: func(ctx context.Context, e *event.CommandFailedEvent) {
+				// 先执行 otelmongo 的逻辑
+				if otelFailed != nil {
+					otelFailed(ctx, e)
+				}
+				// 再执行 internal logger 的逻辑
 				// smt 用于保存命令字符串（若能从 map 中取到）。
 				var smt string
 				// 通过 RequestID 找到对应的命令文本。

@@ -10,6 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fireflycore/go-micro/constant"
+	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -28,20 +32,6 @@ const (
 	LogTypeMongo = 6
 	// ResultSuccess 为成功执行的结果标记。
 	ResultSuccess = "success"
-
-	// HeaderPrefix Firefly系统自定义头部（统一前缀）
-	HeaderPrefix = "x-firefly-"
-	// TraceId 为从 metadata 读取 trace id 的 key
-	TraceId = HeaderPrefix + "trace-id"
-	// SpanId 为从 metadata 读取 span id 的 key
-	SpanId = HeaderPrefix + "span-id"
-
-	// UserId 为从 metadata 读取 user id 的 key
-	UserId = HeaderPrefix + "user-id"
-	// AppId 为从 metadata 读取 app id 的 key
-	AppId = HeaderPrefix + "app-id"
-	// TenantId 为从 metadata 读取调用方 tenant id 的key
-	TenantId = HeaderPrefix + "tenant-id"
 )
 
 // LogLevel 定义日志级别枚举。
@@ -95,15 +85,14 @@ type Interface interface {
 }
 
 type logger struct {
-	Conf                      // Conf 嵌入，复用配置字段。
-	traceStr     string       // traceStr 为普通 trace 模板。
-	traceWarnStr string       // traceWarnStr 为慢查询模板。
-	traceErrStr  string       // traceErrStr 为错误模板。
-	handle       func([]byte) // handle 为结构化日志回调（可为空）。
+	Conf                // Conf 嵌入，复用配置字段。
+	traceStr     string // traceStr 为普通 trace 模板。
+	traceWarnStr string // traceWarnStr 为慢查询模板。
+	traceErrStr  string // traceErrStr 为错误模板。
 }
 
 // NewLogger 构造一个新的 logger，并按配置决定输出模板。
-func NewLogger(conf *Conf, handle func([]byte)) Interface {
+func NewLogger(conf *Conf) Interface {
 	// baseFormat 为默认输出模板。
 	// Info: date, level, db, id, timer, file, smt
 	traceStr := "[%s] [%s] [Database:%s] [RequestId:%d] [Duration:%.3fms] [Path:%s]\n%s"
@@ -129,7 +118,6 @@ func NewLogger(conf *Conf, handle func([]byte)) Interface {
 		traceStr:     traceStr,
 		traceWarnStr: traceWarnStr,
 		traceErrStr:  traceErrStr,
-		handle:       handle,
 	}
 }
 
@@ -164,11 +152,7 @@ func (l *logger) Trace(ctx context.Context, id int64, elapsed time.Duration, smt
 }
 
 func (l *logger) handleLog(ctx context.Context, level LogLevel, path, smt, result string, elapsed time.Duration) {
-	if l.handle == nil {
-		return
-	}
-
-	log := &OperationLogger{
+	logData := &OperationLogger{
 		Database:  l.Database,                     // Database 为库名。
 		Statement: smt,                            // Statement 为命令文本。
 		Result:    result,                         // Result 为 success/slow/error 等结果标记。
@@ -178,26 +162,97 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, path, smt, resul
 		Type:      LogTypeMongo,                   // Type 为日志类型标记。
 	}
 
-	md, _ := metadata.FromIncomingContext(ctx)
-	if gd := md.Get(TraceId); len(gd) != 0 {
-		log.TraceId = gd[0]
-	}
-	if gd := md.Get(SpanId); len(gd) != 0 {
-		log.ParentId = gd[0]
-	}
-	if gd := md.Get(UserId); len(gd) != 0 {
-		log.UserId = gd[0]
-	}
-	if gd := md.Get(AppId); len(gd) != 0 {
-		log.AppId = gd[0]
-		log.InvokeAppId = gd[0]
-	}
-	if gd := md.Get(TenantId); len(gd) != 0 {
-		log.TenantId = gd[0]
+	// 从 OTel span context 中提取链路字段（优先）
+	spanCtx := trace.SpanFromContext(ctx).SpanContext()
+	if spanCtx.IsValid() {
+		logData.TraceId = spanCtx.TraceID().String()
+		logData.ParentId = spanCtx.SpanID().String()
 	}
 
-	if b, err := json.Marshal(log); err == nil {
-		l.handle(b)
+	// 从 gRPC metadata 中提取链路字段（存在则写入结构化日志，作为兼容兜底）
+	md, _ := metadata.FromIncomingContext(ctx)
+	if gd := md.Get(constant.UserId); len(gd) != 0 {
+		logData.UserId = gd[0]
+	}
+	if gd := md.Get(constant.AppId); len(gd) != 0 {
+		logData.AppId = gd[0]
+	}
+	if gd := md.Get(constant.InvokeServiceAppId); len(gd) != 0 {
+		logData.InvokeAppId = gd[0]
+	}
+	if gd := md.Get(constant.TargetServiceAppId); len(gd) != 0 {
+		logData.TargetAppId = gd[0]
+	}
+	if gd := md.Get(constant.TenantId); len(gd) != 0 {
+		logData.TenantId = gd[0]
+	}
+
+	l.emitOTelOperationLog(ctx, level, logData)
+}
+
+func (l *logger) emitOTelOperationLog(ctx context.Context, level LogLevel, logData *OperationLogger) {
+	if logData == nil {
+		return
+	}
+
+	otelLogger := global.Logger("go-mongo")
+
+	var record log.Record
+	record.SetTimestamp(time.Now())
+	record.SetSeverity(convertOTelSeverity(level))
+	record.SetSeverityText(convertOTelSeverityText(level))
+
+	if b, err := json.Marshal(logData); err == nil {
+		record.SetBody(log.StringValue(string(b)))
+	} else {
+		record.SetBody(log.StringValue(logData.Statement))
+	}
+
+	record.AddAttributes(
+		log.String("log_type", "operation"),
+		log.String("database", logData.Database),
+		log.String("statement", logData.Statement),
+		log.String("result", logData.Result),
+		log.String("path", logData.Path),
+		log.Int64("duration", int64(logData.Duration)),
+		log.Int64("db_type", int64(logData.Type)),
+	)
+	if logData.UserId != "" {
+		record.AddAttributes(log.String("user_id", logData.UserId))
+	}
+	if logData.AppId != "" {
+		record.AddAttributes(log.String("app_id", logData.AppId))
+	}
+	if logData.TenantId != "" {
+		record.AddAttributes(log.String("tenant_id", logData.TenantId))
+	}
+
+	otelLogger.Emit(ctx, record)
+}
+
+func convertOTelSeverity(level LogLevel) log.Severity {
+	switch level {
+	case Error:
+		return log.SeverityError
+	case Warn:
+		return log.SeverityWarn
+	case Info:
+		return log.SeverityInfo
+	default:
+		return log.SeverityUndefined
+	}
+}
+
+func convertOTelSeverityText(level LogLevel) string {
+	switch level {
+	case Error:
+		return "ERROR"
+	case Warn:
+		return "WARN"
+	case Info:
+		return "INFO"
+	default:
+		return ""
 	}
 }
 
