@@ -3,14 +3,14 @@ module github.com/fireflycore/go-mongo
 go 1.25.1
 
 require (
-	github.com/fireflycore/go-micro v1.1.7
+	github.com/fireflycore/go-micro v1.1.8
 	github.com/fireflycore/go-utils v0.3.6
 	github.com/google/uuid v1.6.0
 	go.mongodb.org/mongo-driver v1.17.9
 	go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo v0.67.0
 	go.opentelemetry.io/otel/log v0.18.0
 	go.opentelemetry.io/otel/trace v1.42.0
-	google.golang.org/grpc v1.77.0
+	google.golang.org/grpc v1.79.2
 )
 
 require (
