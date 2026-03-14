@@ -20,8 +20,6 @@ type Conf struct {
 	// Logger 控制是否启用 Mongo 命令监控日志
 	Logger bool `json:"logger"`
 
-	// loggerHandle 为内部回调，用于输出结构化日志。
-	loggerHandle func(b []byte)
 	// loggerConsole 控制是否输出到控制台。
 	loggerConsole bool
 }
@@ -29,9 +27,4 @@ type Conf struct {
 // WithLoggerConsole 设置是否将日志输出到控制台。
 func (c *Conf) WithLoggerConsole(state bool) {
 	c.loggerConsole = state
-}
-
-// WithLoggerHandle 设置结构化日志回调（用于接入自有日志系统）。
-func (c *Conf) WithLoggerHandle(handle func(b []byte)) {
-	c.loggerHandle = handle
 }
