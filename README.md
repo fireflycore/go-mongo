@@ -2,7 +2,7 @@
 
 基于官方 mongo-driver 的工程化封装，提供：
 - MongoDB 初始化（TLS、连接池、探活 Ping）
-- Mongo 命令日志输出（控制台/回调，基于 CommandMonitor）
+- **全量可观测性集成**（OpenTelemetry Logs + Traces）
 - 常用模型基类（ObjectID 主键 + created_at/updated_at/deleted_at）
 - 常用工具（分页、时间过滤、物理删除/软删除）
 
@@ -27,13 +27,10 @@ func main() {
 	conf := &mongo.Conf{
 		Address:  "127.0.0.1:27017",
 		Database: "demo",
-		Logger:   true,
+		Logger:   true, // 开启后自动启用 OTel Logs
 	}
 
 	conf.WithLoggerConsole(true)
-	conf.WithLoggerHandle(func(b []byte) {
-		_ = b
-	})
 
 	db, err := mongo.New(conf)
 	if err != nil {
@@ -54,7 +51,7 @@ func main() {
 - Tls：TLS 配置（见下文）
 - MaxOpenConnects：连接池最大连接数（映射到 maxPoolSize）
 - ConnMaxLifeTime：连接最大空闲时间（单位：秒，<=0 表示不设置）
-- Logger：启用 Mongo 命令日志（配合 WithLoggerConsole / WithLoggerHandle）
+- Logger：启用 Mongo 命令日志（自动上报 OpenTelemetry Logs，配合 WithLoggerConsole 可同时输出到控制台）
 
 说明：
 - MaxIdleConnects 目前未设置到 mongo-driver 的 options 中，属于预留字段
@@ -75,27 +72,31 @@ conf := &mongo.Conf{
 }
 ```
 
-### Mongo 命令日志回调
+## 可观测性 (Observability)
 
-开启 `Logger` 后，你可以把 Mongo 命令日志输出到控制台，或写入自定义回调：
+go-mongo 已全量集成 OpenTelemetry，无需手动配置插件，只需确保你的应用已初始化全局 OTel Tracer/Logger Provider（例如使用 go-micro 框架）。
 
-```go
-conf := &mongo.Conf{
-	Address:  "127.0.0.1:27017",
-	Database: "demo",
-	Logger:   true,
-}
+### 1. Logs (日志审计)
 
-conf.WithLoggerConsole(true)
-conf.WithLoggerHandle(func(b []byte) {
-	_ = b
-})
-```
+开启 `Conf.Logger = true` 后，go-mongo 会自动通过 OTel Logs SDK 上报每条 Mongo 命令执行记录（OperationLog）。
+- **Log Type**: `operation`
+- **Fields**: `database`, `statement`, `result`, `duration`, `trace_id`, `user_id`, `app_id`, `tenant_id` 等。
+- **Destination**: 通常发往 OTel Collector -> Loki。
 
-回调收到的是一段 JSON bytes。若你的 Mongo 操作使用了 `collection.Find(ctx, ...)` 等并且 `ctx` 是 gRPC 的 incoming context，则会尝试从 metadata 里读取链路字段：
-- trace-id
-- user-id
-- app-id
+**注意**：
+- 必须使用 `db.WithContext(ctx)` 执行操作，否则无法提取 TraceID 和 UserID。
+- UserID/TenantID 等字段会自动从 gRPC metadata 中提取（如果存在）。
+
+### 2. Traces (链路追踪)
+
+初始化时，go-mongo 会自动挂载 `otelmongo` 插件。
+- 自动为每个 Mongo 命令（Find/Insert/Delete 等）创建 Span。
+- Span 名称格式：`mongodb.find`。
+- **Destination**: 通常发往 OTel Collector -> Tempo/Jaeger。
+
+**注意**：
+- 如果未初始化全局 TracerProvider，插件会自动静默，不会报错。
+- 同样需要传递 `ctx` 才能将 Mongo Span 正确关联到父 Trace。
 
 ## 模型基类
 
