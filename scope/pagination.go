@@ -5,7 +5,7 @@ import (
 )
 
 // WithPagination 为 FindOptions 设置分页参数（page 从 1 开始）。
-func WithPagination(option *options.FindOptions, page, size uint64) {
+func WithPagination(opt *options.FindOptionsBuilder, page, size uint64) {
 	if page == 0 {
 		page = 1
 	}
@@ -16,8 +16,6 @@ func WithPagination(option *options.FindOptions, page, size uint64) {
 		size = 100
 	}
 
-	limit := int64(size)
-	skip := int64((page - 1) * size)
-	option.Limit = &limit
-	option.Skip = &skip
+	opt.SetLimit(int64(size))
+	opt.SetSkip(int64((page - 1) * size))
 }
