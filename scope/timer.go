@@ -3,7 +3,7 @@ package scope
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // WithTimerRange 向过滤条件追加 created_at 时间范围（start/end 为 time.DateTime 格式）。

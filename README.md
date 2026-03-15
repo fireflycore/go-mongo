@@ -116,7 +116,7 @@ type TestEntity struct {
 
 ```go
 import (
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 opt := options.Find()
@@ -133,7 +133,7 @@ mongo.WithPagination(opt, 1, 20)
 
 ```go
 import (
-	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 filter := bson.D{}

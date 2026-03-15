@@ -1,7 +1,7 @@
 package scope
 
 import (
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // WithPagination 为 FindOptions 设置分页参数（page 从 1 开始）。
@@ -16,6 +16,8 @@ func WithPagination(option *options.FindOptions, page, size uint64) {
 		size = 100
 	}
 
-	option.SetLimit(int64(size))
-	option.SetSkip(int64((page - 1) * size))
+	limit := int64(size)
+	skip := int64((page - 1) * size)
+	option.Limit = &limit
+	option.Skip = &skip
 }

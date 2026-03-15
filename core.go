@@ -11,11 +11,11 @@ import (
 	"github.com/fireflycore/go-mongo/internal"
 	"github.com/fireflycore/go-utils/network"
 	"github.com/fireflycore/go-utils/tlsx"
-	"go.mongodb.org/mongo-driver/event"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
-	"go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo"
+	"go.mongodb.org/mongo-driver/v2/event"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
+	"go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/v2/mongo/otelmongo"
 )
 
 // New 根据配置创建 MongoDB 连接并返回数据库句柄。
@@ -149,13 +149,17 @@ func New(c *Conf) (*mongo.Database, error) {
 					stmts.Delete(e.RequestID)
 				}
 				// 记录失败 Trace，err 为 driver 提供的失败信息。
-				logger.Trace(ctx, e.RequestID, e.Duration, smt, e.Failure)
+				if e.Failure != nil {
+					logger.Trace(ctx, e.RequestID, e.Duration, smt, e.Failure.Error())
+				} else {
+					logger.Trace(ctx, e.RequestID, e.Duration, smt, "")
+				}
 			},
 		}
 	}
 
 	// 用构造好的 options 建立客户端连接。
-	client, err := mongo.Connect(ctx, clientOptions)
+	client, err := mongo.Connect(clientOptions)
 	if err != nil {
 		return nil, err
 	}
