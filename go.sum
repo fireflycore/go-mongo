@@ -2,8 +2,8 @@ github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UF
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/fireflycore/go-micro v1.2.3 h1:WFfe+BCKD7zhj1U6quxBE6PjFBtHlsvIZ8cx7OI4Q2w=
-github.com/fireflycore/go-micro v1.2.3/go.mod h1:88gqMu9iB9MuhEcorEB4E5G659qD/0bAgimenVgcTeU=
+github.com/fireflycore/go-micro v1.3.1 h1:aU9Rrh3SOc1ntEQlpSwx0nGAwK8CfuwHZ1OiNFzs/5I=
+github.com/fireflycore/go-micro v1.3.1/go.mod h1:88gqMu9iB9MuhEcorEB4E5G659qD/0bAgimenVgcTeU=
 github.com/fireflycore/go-utils v0.3.6 h1:Cvc6S31p5lOsJTdJMxTrF7MYod1HdsLb7kYwHIbjLYE=
 github.com/fireflycore/go-utils v0.3.6/go.mod h1:Sg9E/2bnNlSuvsO9zoobo4Qc+y7Xf/KSp3tQq+BjzBg=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=

@@ -3,7 +3,7 @@ module github.com/fireflycore/go-mongo
 go 1.25.1
 
 require (
-	github.com/fireflycore/go-micro v1.2.3
+	github.com/fireflycore/go-micro v1.3.1
 	github.com/fireflycore/go-utils v0.3.6
 	github.com/google/uuid v1.6.0
 	go.mongodb.org/mongo-driver/v2 v2.5.0
