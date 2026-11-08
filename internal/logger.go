@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fireflycore/go-micro/constant"
+	"github.com/fireflycore/go-micro/service"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc/metadata"
 )
 
 // ANSI Color Constants
@@ -169,22 +169,12 @@ func (l *logger) handleLog(ctx context.Context, level LogLevel, path, smt, resul
 		logData.ParentId = spanCtx.SpanID().String()
 	}
 
-	// 从 gRPC metadata 中提取链路字段（存在则写入结构化日志，作为兼容兜底）
-	md, _ := metadata.FromIncomingContext(ctx)
-	if gd := md.Get(constant.UserId); len(gd) != 0 {
-		logData.UserId = gd[0]
-	}
-	if gd := md.Get(constant.AppId); len(gd) != 0 {
-		logData.AppId = gd[0]
-	}
-	if gd := md.Get(constant.InvokeServiceAppId); len(gd) != 0 {
-		logData.InvokeAppId = gd[0]
-	}
-	if gd := md.Get(constant.TargetServiceAppId); len(gd) != 0 {
-		logData.TargetAppId = gd[0]
-	}
-	if gd := md.Get(constant.TenantId); len(gd) != 0 {
-		logData.TenantId = gd[0]
+	// 身份来自框架已建立的可信上下文，不再读取原始 metadata。
+	identity := service.TrustedLogIdentity(ctx)
+	logData.UserId, logData.AppId, logData.TenantId = identity.UserId, identity.AppId, identity.TenantId
+	if current, ok := service.FromContext(ctx); ok {
+		logData.InvokeAppId = current.InvokeAppId
+		logData.TargetAppId = current.ServiceAppId
 	}
 
 	l.emitOTelOperationLog(ctx, level, logData)
@@ -203,28 +193,28 @@ func (l *logger) emitOTelOperationLog(ctx context.Context, level LogLevel, logDa
 	record.SetSeverityText(convertOTelSeverityText(level))
 
 	if b, err := json.Marshal(logData); err == nil {
-		record.SetBody(log.StringValue(string(b)))
+		record.SetBody(attribute.StringValue(string(b)))
 	} else {
-		record.SetBody(log.StringValue(logData.Statement))
+		record.SetBody(attribute.StringValue(logData.Statement))
 	}
 
 	record.AddAttributes(
-		log.String("log_type", "operation"),
-		log.String("database", logData.Database),
-		log.String("statement", logData.Statement),
-		log.String("result", logData.Result),
-		log.String("path", logData.Path),
-		log.Int64("duration", int64(logData.Duration)),
-		log.Int64("db_type", int64(logData.Type)),
+		attribute.String("log_type", "operation"),
+		attribute.String("database", logData.Database),
+		attribute.String("statement", logData.Statement),
+		attribute.String("result", logData.Result),
+		attribute.String("path", logData.Path),
+		attribute.Int64("duration", int64(logData.Duration)),
+		attribute.Int64("db_type", int64(logData.Type)),
 	)
 	if logData.UserId != "" {
-		record.AddAttributes(log.String("user_id", logData.UserId))
+		record.AddAttributes(attribute.String("user_id", logData.UserId))
 	}
 	if logData.AppId != "" {
-		record.AddAttributes(log.String("app_id", logData.AppId))
+		record.AddAttributes(attribute.String("app_id", logData.AppId))
 	}
 	if logData.TenantId != "" {
-		record.AddAttributes(log.String("tenant_id", logData.TenantId))
+		record.AddAttributes(attribute.String("tenant_id", logData.TenantId))
 	}
 
 	otelLogger.Emit(ctx, record)

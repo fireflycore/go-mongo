@@ -85,7 +85,7 @@ go-mongo 已全量集成 OpenTelemetry，无需手动配置插件，只需确保
 
 **注意**：
 - 必须使用 `db.WithContext(ctx)` 执行操作，否则无法提取 TraceID 和 UserID。
-- UserID/TenantID 等字段会自动从 gRPC metadata 中提取（如果存在）。
+- UserID/TenantID 等身份字段来自 go-micro 已建立的可信 service.Context；原始 gRPC metadata 不再作为身份来源。
 
 ### 2. Traces (链路追踪)
 
